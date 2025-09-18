@@ -1,11 +1,30 @@
 version: '3.8'
 
 services:
+  # Airflow metadata database
+  track-ttc-airflow-postgres:
+    image: postgres:13
+    container_name: track-ttc-airflow-postgres
+    environment:
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB}
+    volumes:
+      - track_ttc_airflow_db_volume:/var/lib/postgresql/data
+    ports:
+      - "${AIRFLOW_POSTGRES_PORT}:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_POSTGRES_USER}", "-d", "${AIRFLOW_POSTGRES_DB}"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  # Your application database
   postgres:
     image: postgres:15
     container_name: track-ttc-postgres
     ports:
-      - "5432:5432"
+      - "${APP_POSTGRES_PORT}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -18,6 +37,51 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Airflow webserver
+  track-ttc-airflow-webserver:
+    build: .
+    container_name: track-ttc-airflow-webserver
+    command: webserver
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT}:8080"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@track-ttc-airflow-postgres/${AIRFLOW_POSTGRES_DB}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW_CONN_APP_DB: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    volumes:
+      - track_ttc_airflow_logs:/opt/airflow/logs
+      - track_ttc_airflow_plugins:/opt/airflow/plugins
+      - ./dags:/opt/airflow/dags
+    depends_on:
+      track-ttc-airflow-postgres:
+        condition: service_healthy
+    restart: always
+
+  # Airflow scheduler
+  track-ttc-airflow-scheduler:
+    build: .
+    container_name: track-ttc-airflow-scheduler
+    command: scheduler
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@track-ttc-airflow-postgres/${AIRFLOW_POSTGRES_DB}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW_CONN_APP_DB: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - track_ttc_airflow_logs:/opt/airflow/logs
+      - track_ttc_airflow_plugins:/opt/airflow/plugins
+      - ./dags:/opt/airflow/dags
+    depends_on:
+      track-ttc-airflow-postgres:
+        condition: service_healthy
+    restart: always
 
   minio:
     image: minio/minio
@@ -39,5 +103,12 @@ services:
       retries: 3
 
 volumes:
+  track_ttc_airflow_db_volume:
   postgres_data:
+  track_ttc_airflow_logs:
+  track_ttc_airflow_plugins:
   minio_data:
+
+networks:
+  default:
+    name: track_ttc_airflow_network
