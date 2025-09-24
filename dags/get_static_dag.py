@@ -71,6 +71,8 @@ def update_etag():
     response = requests.get(url)
     response.raise_for_status()
     file_version = response.headers.get('ETag')
+    last_modified = response.headers.get('Last-Modified')
+    Variable.set('StaticFileLastModified', last_modified)
     Variable.set('StaticFileETag', file_version)
     print(f"Updated ETag to {file_version}")
 
