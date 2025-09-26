@@ -2,7 +2,9 @@ from airflow import DAG
 from datetime import datetime, timedelta
 from airflow.models import Variable
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-from airflow.operators.python import PythonOperator, ShortCircuitOperator, BranchPythonOperator
+from airflow.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+# from airflow.sensors.external_task import ExternalTaskSensor
 import os
 from urllib.parse import quote
 

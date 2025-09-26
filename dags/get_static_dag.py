@@ -2,6 +2,8 @@ from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+# from airflow.sensors.base import 
 # from airflow.operators.bash import Bash
 import requests
 from zipfile import ZipFile
@@ -136,4 +138,11 @@ update_etag_task = PythonOperator(
     python_callable=update_etag
 )
 
-check_update_task >> download_zip_task >> extract_zip_task >> update_etag_task >> clear_zip_task
+trigger_insert_minio = TriggerDagRunOperator(
+    dag=dag,
+    task_id='trigger_insert_minio_dag',
+    trigger_dag_id='static_files_to_minio',
+    wait_for_completion=True,
+)
+
+check_update_task >> download_zip_task >> extract_zip_task >> update_etag_task >> clear_zip_task >> trigger_insert_minio
