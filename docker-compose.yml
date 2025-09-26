@@ -59,6 +59,7 @@ services:
       - track_ttc_airflow_logs:/opt/airflow/logs
       - track_ttc_airflow_plugins:/opt/airflow/plugins
       - ./dags:/opt/airflow/dags
+      - track_ttc_data:/opt/airflow/data
     depends_on:
       track-ttc-airflow-postgres:
         condition: service_healthy
@@ -78,6 +79,7 @@ services:
       - track_ttc_airflow_logs:/opt/airflow/logs
       - track_ttc_airflow_plugins:/opt/airflow/plugins
       - ./dags:/opt/airflow/dags
+      - track_ttc_data:/opt/airflow/data
     depends_on:
       track-ttc-airflow-postgres:
         condition: service_healthy
@@ -107,6 +109,7 @@ volumes:
   postgres_data:
   track_ttc_airflow_logs:
   track_ttc_airflow_plugins:
+  track_ttc_data:
   minio_data:
 
 networks:
