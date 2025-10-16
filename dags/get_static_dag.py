@@ -1,8 +1,9 @@
 from airflow import DAG
 from airflow.models import Variable
-from airflow.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.operators.python import PythonOperator, BranchPythonOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.operators.dummy import DummyOperator
 # from airflow.sensors.base import 
 # from airflow.operators.bash import Bash
 import requests
@@ -40,8 +41,8 @@ def check_for_static_update():
     prev_version = Variable.get('StaticFileETag', '')
     if file_version == prev_version:
         print('DAG aborted! No new file found!')
-        return False
-    return True
+        return 'trigger_insert_minio_dag'
+    return 'download_static_file_zip'
 
 
 def download_zip():
@@ -125,7 +126,7 @@ clear_zip_task = PythonOperator(
 )
 
 
-check_update_task = ShortCircuitOperator(
+check_update_task = BranchPythonOperator(
     dag=dag,
     task_id='check_for_update',
     python_callable=check_for_static_update
@@ -143,6 +144,8 @@ trigger_insert_minio = TriggerDagRunOperator(
     task_id='trigger_insert_minio_dag',
     trigger_dag_id='static_files_to_minio',
     wait_for_completion=True,
+    trigger_rule='all_done',
 )
 
-check_update_task >> download_zip_task >> extract_zip_task >> update_etag_task >> clear_zip_task >> trigger_insert_minio
+check_update_task >> [download_zip_task, trigger_insert_minio]
+download_zip_task >> extract_zip_task >> update_etag_task >> clear_zip_task >> trigger_insert_minio
