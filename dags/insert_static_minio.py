@@ -2,9 +2,9 @@ from airflow import DAG
 from datetime import datetime, timedelta
 from airflow.models import Variable
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-from airflow.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.operators.python import PythonOperator, BranchPythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-# from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.operators.dummy import DummyOperator
 import os
 from urllib.parse import quote
 
@@ -54,8 +54,8 @@ def check_bucket_for_update():
 
     if cond:
         print("prefix found. Static files not updated!")
-        return False
-    return True
+        return 'end'
+    return 'upload_files'
 
 
 
@@ -98,7 +98,7 @@ check_bucket_operator = PythonOperator(
 )
 
 
-check_bucket_for_update_operator = ShortCircuitOperator(
+check_bucket_for_update_operator = BranchPythonOperator(
     dag=dag,
     task_id='check_bucket_for_update',
     python_callable=check_bucket_for_update
@@ -111,5 +111,14 @@ upload_files_operator = PythonOperator(
     python_callable=upload_files,
 )
 
+trigger_insert_postgres = TriggerDagRunOperator(
+    dag=dag,
+    task_id='trigger_insert_postgres_dag',
+    trigger_dag_id='insert_static_to_postgres',
+    wait_for_completion=True
+)
 
-check_bucket_operator >> check_bucket_for_update_operator >> upload_files_operator
+
+
+check_bucket_operator >> check_bucket_for_update_operator >> [upload_files_operator, trigger_insert_postgres]
+upload_files_operator >> trigger_insert_postgres
