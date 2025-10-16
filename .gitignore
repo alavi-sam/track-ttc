@@ -78,3 +78,5 @@ htmlcov/
 
 # Pytest
 .pytest_cache/
+
+data/
