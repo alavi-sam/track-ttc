@@ -54,7 +54,7 @@ def check_bucket_for_update():
 
     if cond:
         print("prefix found. Static files not updated!")
-        return 'end'
+        return 'trigger_insert_postgres_dag'
     return 'upload_files'
 
 
