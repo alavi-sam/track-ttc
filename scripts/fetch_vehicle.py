@@ -1,5 +1,5 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
-from datetime import datetime 
+from datetime import datetime
 import requests
 import boto3
 from botocore.client import BaseClient
@@ -7,13 +7,22 @@ import os
 from dotenv import load_dotenv
 from io import BytesIO
 from google.transit import gtfs_realtime_pb2
-
+import logging
 
 
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
 
 URL = 'https://bustime.ttc.ca/gtfsrt/vehicles'
+BRONZE_LAYER_BUCKET_NAME = 'vehicle-bronze-layer'
 
 
 def fetch_vehicle_data(url):
@@ -22,14 +31,16 @@ def fetch_vehicle_data(url):
         response.raise_for_status()
         return response.content
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        logger.error(f"Error fetching data: {e}", exc_info=True)
         return
     
 
 def get_s3_client() -> BaseClient:
+    endpoint_url = os.getenv('MINIO_ENDPOINT_URL', f'http://localhost:{os.getenv("MINIO_API_PORT")}')
+
     s3_client = boto3.client(
         's3',
-        endpoint_url=f'http://localhost:{os.getenv('MINIO_API_PORT')}',
+        endpoint_url=endpoint_url,
         aws_access_key_id=os.getenv('MINIO_ACCESS_KEY'),
         aws_secret_access_key=os.getenv('MINIO_SECRET_KEY')
     )
@@ -39,16 +50,15 @@ def get_s3_client() -> BaseClient:
 def check_for_bucket(s3_client, bucket_name):
     try:
         s3_client.head_bucket(Bucket=bucket_name)
-        return 
+        return
     except Exception as e:
-        print('bucket does not exist')
-        print(f"error: {str(e)}")
+        logger.warning(f"Bucket '{bucket_name}' does not exist: {str(e)}")
         s3_client.create_bucket(Bucket=bucket_name)
-        print('bucket created!')
+        logger.info(f"Bucket '{bucket_name}' created successfully")
         return
         
 
-def insert_vehicle_feed(content, bucket_name):
+def insert_vehicle_feed(s3_client, content, bucket_name):
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(content)    
 
@@ -60,14 +70,50 @@ def insert_vehicle_feed(content, bucket_name):
     obj_key = f"vehicle/year={feed_datetime.year}/month={feed_datetime.month}/day={feed_datetime.day}/hour={feed_datetime.hour}/{feed_timestamp}.bin"
     bin_file = BytesIO(content)
 
-    s3_client = get_s3_client()
-    s3_client.put_fileobj(
+    s3_client.upload_fileobj(
         Fileobj=bin_file,
         Bucket=bucket_name,
         Key=obj_key,
-        metadata={
-            'upload_timestamp': str(upload_timestamp)
+        ExtraArgs={
+            'Metadata': {
+                'upload_timestamp': str(upload_timestamp)
+            }
         }
     )
 
 
+def fetch_and_insert():
+    try:
+        logger.info("Starting vehicle data fetch...")
+        content = fetch_vehicle_data(URL)
+        if not content:
+            logger.error("Failed to fetch data from TTC")
+            return
+        s3_client = get_s3_client()
+        check_for_bucket(s3_client, BRONZE_LAYER_BUCKET_NAME)
+        insert_vehicle_feed(s3_client, content, BRONZE_LAYER_BUCKET_NAME)
+        logger.info(f"Successfully stored vehicle data to '{BRONZE_LAYER_BUCKET_NAME}'")
+    except Exception as e:
+        logger.error(f"Error in fetch_and_insert job: {e}", exc_info=True)
+
+
+if __name__ == "__main__":
+    scheduler = BlockingScheduler()
+
+    scheduler.add_job(
+        fetch_and_insert,
+        'interval',
+        seconds=30,
+        id='fetch_vehicle_data_job',
+        name='Fetch and store TTC vehicle data',
+        replace_existing=True
+    )
+
+    logger.info("Scheduler started. Press Ctrl+C to exit")
+
+    fetch_and_insert()
+
+    try:
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Scheduler stopped")
