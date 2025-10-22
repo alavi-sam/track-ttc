@@ -119,6 +119,21 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  trip-fetcher:
+    build: .
+    container_name: track-ttc-trip-fetcher
+    command: python /opt/airflow/scripts/fetch_trip.py
+    environment:
+      MINIO_ENDPOINT_URL: http://minio:9000
+      MINIO_API_PORT: ${MINIO_API_PORT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+
 volumes:
   track_ttc_airflow_db_volume:
   postgres_data:
