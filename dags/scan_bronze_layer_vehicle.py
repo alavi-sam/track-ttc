@@ -10,7 +10,7 @@ from psycopg2.extras import execute_batch
 
 
 @dag(
-    dag_id='scan_bronze_layer_files',
+    dag_id='scan_bronze_layer_files_vehicle',
     schedule_interval="0 * * * *",
     default_args={
         'owner': 'Sam',
