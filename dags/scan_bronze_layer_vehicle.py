@@ -59,8 +59,11 @@ def scan_vehicle_bronze_layer_files():
     def scan_bucket(bucket_name: str, **kwargs):
         s3_hook = S3Hook(aws_conn_id='minio_s3_conn')
         execution_datetime = kwargs['data_interval_start']
-        prefix = execution_datetime.strftime('vehicle/year=%Y/month=%m/day=%d/hour=%H/')
+        year, month, day, hour = execution_datetime.year, execution_datetime.month, execution_datetime.day, execution_datetime.hour
+        prefix = f"vehicle/year={year}/month={month}/day={day}/hour={hour}/"
         
+        logging.info(f"scanning bucket {bucket_name} with prefix {prefix}")
+
         file_keys = s3_hook.list_keys(
             bucket_name=bucket_name,
             prefix=prefix,
